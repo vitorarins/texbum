@@ -9,6 +9,8 @@ import (
 	"unsafe"
 )
 
+var origTermios syscall.Termios
+
 // TcSetAttr restores the terminal connected to the given file descriptor to a
 // previous state.
 func TcSetAttr(fd uintptr, termios *syscall.Termios) error {
@@ -26,30 +28,43 @@ func TcGetAttr(fd uintptr, termios *syscall.Termios) error {
 	return nil
 }
 
+func disableRawMode() {
+	out, err := os.OpenFile("/dev/tty", syscall.O_WRONLY, 0)
+	defer out.Close()
+
+	err = TcSetAttr(out.Fd(), &origTermios)
+
+	if err != nil {
+		fmt.Printf("Could not SET attribute from original terminal because: %s.\n", err)
+	}
+}
+
 func enableRawMode() {
 	out, err := os.OpenFile("/dev/tty", syscall.O_WRONLY, 0)
+	defer out.Close()
 	if err != nil {
 		fmt.Printf("Could not open TTY because: %s", err)
 	}
 	
-	var raw syscall.Termios
-	err = TcGetAttr(out.Fd(), &raw)
+	err = TcGetAttr(out.Fd(), &origTermios)
 	
 	if err != nil {
-		fmt.Printf("Could not GET attribute from terminal because: %s\n", err)
+		fmt.Printf("Could not GET attribute from terminal because: %s.\n", err)
 	}
 
+	raw := origTermios
 	raw.Lflag &^= syscall.ECHO;
 
 	err = TcSetAttr(out.Fd(), &raw)
 
 	if err != nil {
-		fmt.Println("Could not SET attribute from terminal.")
+		fmt.Printf("Could not SET attribute from terminal because: %s.\n", err)
 	}
 }
 
 func main() {
 	enableRawMode()
+	defer disableRawMode()
 
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan()  {
